@@ -1,0 +1,6 @@
+.pio/build/
+.pio/
+.idea
+*.sw?
+*.o
+*.d
