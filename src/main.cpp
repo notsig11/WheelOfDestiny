@@ -1,9 +1,10 @@
 #include <Arduino.h>
 #include <ESP32Encoder.h>
 #include <chrono>
-#include <stdio.h>
+#include <cstdio>
 #include <iostream>
 #include <Wire.h>
+#include "i2c_proto.h"
 //#include <TFT_eSPI.h>
 
 using namespace std::chrono_literals;
@@ -17,9 +18,10 @@ constexpr uint8_t DRINK_SLOTS {30};
 constexpr uint16_t COUNTS_PER_REV {600}; // Inside an 18" wheel ~ 5.72 * 600 counts.
 constexpr uint16_t COUNTS_PER_DRINK = COUNTS_PER_REV / DRINK_SLOTS;
 
-constexpr auto spinCompleteWait {5.0s};
+constexpr auto spinCompleteWait {1s};
 
-int32_t lastValue;
+int32_t lastValue {0};
+volatile bool resetTriggered {false};
 
 extern "C" {
 int _write(int fd, char *ptr, size_t len) {
@@ -35,11 +37,20 @@ enum class State {
     DISPENSING,
 };
 
-State status {State::IDLE};
+volatile State status {State::IDLE};
 
+// ISRs
 static IRAM_ATTR void countChanged(void* arg) {
     ESP32Encoder* encoder = static_cast<ESP32Encoder*>(arg);
     status = State::SPINNING;
+    if (resetTriggered) {
+        resetTriggered = false;
+        encoder->setCount(0);
+    }
+}
+
+static IRAM_ATTR void resetEnc() {
+    resetTriggered = true;
 }
 
 ESP32Encoder wheel { true, countChanged};
@@ -47,15 +58,37 @@ ESP32Encoder wheel { true, countChanged};
 
 void setup() {
     Serial.begin(115200);
+
+    // I2C setup (master, 400kHz)
+    Wire.begin(2, 1);
+
+    // Wheel setup
     ESP32Encoder::useInternalWeakPullResistors = puType::up;
     wheel.attachSingleEdge(OUT_A, OUT_B);
 
+    // Reset switch/wheel homing.
+    pinMode(RESET, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(RESET), resetEnc, RISING);
+
+    // Debug startup info.
     Serial.println("Startup configuration complete.");
     Serial.printf("Total heap: %d\n", ESP.getHeapSize());
     Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
     Serial.printf("Total PSRAM: %d\n", ESP.getPsramSize());
     Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
-    std::cout << "testing\n";
+    std::cout << "Initialization Complete... Find out your destiny.\n";
+}
+
+void requestDispense(const uint8_t controllerAddress, const uint8_t pump, const uint8_t pourCount) {
+    assert(pourCount > 0 && pourCount < 8);
+    assert(pump >= 0 && pump < 4);
+    Wire.beginTransmission(controllerAddress);
+        Wire.write(DISPENSE);
+        Wire.write(pump);
+        Wire.write(pourCount);
+    Wire.endTransmission();
+
+    Serial.printf("Requesting dispense of %d 1/8 oz pours from controller %x pump %d.\n", pourCount, controllerAddress, pump);
 }
 
 /*
@@ -64,21 +97,19 @@ void setup() {
  */
 std::chrono::time_point<std::chrono::steady_clock> stoppedAtTime;
 void loop() {
-    int32_t position = abs(static_cast<int32_t>(wheel.getCount()));
+    const int32_t position = abs(static_cast<int32_t>(wheel.getCount()));
+
+    // if (resetTriggered) {
+    //     Serial.printf("Reset triggered at count %d\n", position);
+    //     resetTriggered = false;
+    //     wheel.setCount(0);
+    // }
 
     // Wrap the counter?
 //    if (position > COUNTS_PER_REV) {
 //        wheel.setCount(position - COUNTS_PER_REV);
 //        Serial.println("1 rev reset to " + String(position));
 //    }
-
-    // 1 rev reset/check.
-    if (digitalRead(RESET)) {
-        if (status != State::IDLE)
-            Serial.printf("Reset/loop.  Counter: %d\n", wheel.getCount());
-        wheel.setCount(0);
-        status = State::IDLE;
-    }
 
     // Real work... Check the counter is moving and change states based on that.
     if (lastValue != position) {
@@ -87,31 +118,32 @@ void loop() {
 
         lastValue = position;
         if (status != State::SPINNING && status != State::DISPENSING) {
+            Serial.printf("Transition from %d to %d\n", status, State::SPINNING);
             status = State::SPINNING;
             return;
         }
-        // Still spinning.
-    } else {
+    } else { // Stopped...
         if (status == State::IDLE) return;
         // stopped.
         if (status == State::SPINNING) {
-            Serial.printf("Stopped! (settling for 5s)");
+            Serial.printf("Stopped! Count %d (%d) (settling for 5s)\n", position, lastValue);
             stoppedAtTime = std::chrono::steady_clock::now();
             status = State::STOPPED;
-            return;
-        }
-        if (spinCompleteWait < std::chrono::steady_clock::now() - stoppedAtTime) {
-            const auto waited = std::chrono::steady_clock::now() - stoppedAtTime;
-            if (status == State::DISPENSING) {
-                // Debugging TODO: REMOVEME
-                status = State::IDLE;
-                return;
+        } else if (status == State::STOPPED) {
+            if (spinCompleteWait < std::chrono::steady_clock::now() - stoppedAtTime) {
+                const auto waited = std::chrono::steady_clock::now() - stoppedAtTime;
+                if (status == State::DISPENSING) {
+                    // Debugging TODO: REMOVEME
+                    status = State::IDLE;
+                    Serial.println("Back to IDLE");
+                    return;
+                }
+                status = State::DISPENSING;
+                // TODO: Recipe book.
+                requestDispense(PUMP_CONTROL_0, 0, 1);
+                std::cout << "Dispensing drink " << position / COUNTS_PER_DRINK << " (encoder position " << position << ", waited " << waited.count() / 1'000'000 << "ms)\n";
+                delay(1000);
             }
-            status = State::DISPENSING;
-            std::cout << "Dispensing drink " << position / COUNTS_PER_DRINK << " (encoder position " << position << ", waited " << waited.count() / 1000000 << "ms)\n";
-        } else {
-            const auto waited = std::chrono::steady_clock::now() - stoppedAtTime;
-            std::cout << "Stopped!  Final position: " << position << " Waiting to be sure... " << waited.count() / 1000000 << "ms\n";
         }
     }
     delay(100);
