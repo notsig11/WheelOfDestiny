@@ -10,8 +10,10 @@
 using namespace std::chrono_literals;
 
 // Peripheral pins
-#define OUT_A 13
-#define OUT_B 10
+#define SDA    2
+#define SCL    1
+#define OUT_A 12
+#define OUT_B 11
 #define RESET 17
 
 constexpr uint8_t DRINK_SLOTS {30};
@@ -60,7 +62,7 @@ void setup() {
     Serial.begin(115200);
 
     // I2C setup (master, 400kHz)
-    Wire.begin(2, 1);
+    Wire.begin(SDA, SCL);
 
     // Wheel setup
     ESP32Encoder::useInternalWeakPullResistors = puType::up;
