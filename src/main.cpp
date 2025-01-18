@@ -5,6 +5,7 @@
 #include <iostream>
 #include <Wire.h>
 #include "i2c_proto.h"
+#include "RecipeBook.h"
 //#include <TFT_eSPI.h>
 
 using namespace std::chrono_literals;
@@ -19,6 +20,9 @@ using namespace std::chrono_literals;
 constexpr uint8_t DRINK_SLOTS {30};
 constexpr uint16_t COUNTS_PER_REV {600}; // Inside an 18" wheel ~ 5.72 * 600 counts.
 constexpr uint16_t COUNTS_PER_DRINK = COUNTS_PER_REV / DRINK_SLOTS;
+
+TwoWire i2c {0};
+RecipeBook *recipeBook;
 
 constexpr auto spinCompleteWait {1s};
 
@@ -62,7 +66,8 @@ void setup() {
     Serial.begin(115200);
 
     // I2C setup (master, 400kHz)
-    Wire.begin(SDA, SCL);
+    i2c.begin(SDA, SCL);
+    recipeBook = new RecipeBook(&i2c);
 
     // Wheel setup
     ESP32Encoder::useInternalWeakPullResistors = puType::up;
@@ -81,17 +86,6 @@ void setup() {
     std::cout << "Initialization Complete... Find out your destiny.\n";
 }
 
-void requestDispense(const uint8_t controllerAddress, const uint8_t pump, const uint8_t pourCount) {
-    assert(pourCount > 0 && pourCount < 8);
-    assert(pump >= 0 && pump < 4);
-    Wire.beginTransmission(controllerAddress);
-        Wire.write(DISPENSE);
-        Wire.write(pump);
-        Wire.write(pourCount);
-    Wire.endTransmission();
-
-    Serial.printf("Requesting dispense of %d 1/8 oz pours from controller %x pump %d.\n", pourCount, controllerAddress, pump);
-}
 
 /*
  * States:
@@ -135,15 +129,18 @@ void loop() {
             if (spinCompleteWait < std::chrono::steady_clock::now() - stoppedAtTime) {
                 const auto waited = std::chrono::steady_clock::now() - stoppedAtTime;
                 if (status == State::DISPENSING) {
-                    // Debugging TODO: REMOVEME
+                    // Debugging TODO: REMOVEME when we get feedback that dispensing is complete...
                     status = State::IDLE;
                     Serial.println("Back to IDLE");
                     return;
                 }
                 status = State::DISPENSING;
-                // TODO: Recipe book.
-                requestDispense(PUMP_CONTROL_0, 0, 1);
-                std::cout << "Dispensing drink " << position / COUNTS_PER_DRINK << " (encoder position " << position << ", waited " << waited.count() / 1'000'000 << "ms)\n";
+                const auto recipe = recipeBook->getRecipeAtIndex(position / COUNTS_PER_DRINK);
+
+                std::cout << "Dispensing " << recipe.name << "[" << position / COUNTS_PER_DRINK << "] (encoder position " << position << ", waited " << waited.count() / 1'000'000 << "ms)\n";
+                if (!recipeBook->mixRecipe(recipe.name)) {
+                    std::cout << "Failed at dispensing... \n";
+                }
                 delay(1000);
             }
         }
