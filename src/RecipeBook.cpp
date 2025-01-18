@@ -28,9 +28,14 @@ bool RecipeBook::mixRecipe(std::string_view drink) const {
     // Find ingredients!
     std::vector<std::pair<Controller, Pump>> pumps;
     for (const auto& ingredient: ingredients) {
-        const auto liquor = liquorMap.at(ingredient);
-        Serial.printf("found %s at 0x%x pump %d\n", ingredient.c_str(), liquor.first, liquor.second);
-        pumps.push_back(liquor);
+        try {
+            const auto liquor = liquorMap.at(ingredient);
+            Serial.printf("found %s at 0x%x pump %d\n", ingredient.c_str(), liquor.first, liquor.second);
+            pumps.push_back(liquor);
+        } catch (const std::out_of_range&) {
+            Serial.printf("Didn't find ingredient %s\n", ingredient.c_str());
+            return false;
+        }
     }
 
     // TODO: I want to optimize this and command all the pumps at once instead of sequentially but that seems like a lot of work right now.
@@ -55,6 +60,10 @@ bool RecipeBook::mixRecipe(std::string_view drink) const {
     return true;
 }
 
-Recipe RecipeBook::getRecipeAtIndex(int index) const {
-    return recipes[index];
+std::optional<Recipe> RecipeBook::getRecipeAtIndex(int index) const {
+    if (index >= recipes.size()) {
+        Serial.println("Recipe index out of range");
+        return {};
+    }
+    return { recipes[index] };
 }

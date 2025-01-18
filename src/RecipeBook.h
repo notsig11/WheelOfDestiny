@@ -60,7 +60,7 @@ class RecipeBook {
                                 { "151", {PUMP_CONTROL_4, 2} },
                                 { "lime", {PUMP_CONTROL_4, 3} },
 
-                                { "vodka", {PUMP_CONTROL_5, 0} },
+                                { "curacao", {PUMP_CONTROL_5, 0} },
                                 { "vodka", {PUMP_CONTROL_5, 1} },
                                 { "vodka", {PUMP_CONTROL_5, 2} },
                                 { "vodka", {PUMP_CONTROL_5, 3} },
@@ -70,6 +70,7 @@ class RecipeBook {
 public:
     explicit RecipeBook(TwoWire* wire) : i2cBus(wire) {};
     bool mixRecipe(std::string_view drink) const;
-    Recipe getRecipeAtIndex(int index) const;
+
+    std::optional<Recipe> getRecipeAtIndex(int index) const;
 
 };

@@ -135,11 +135,18 @@ void loop() {
                     return;
                 }
                 status = State::DISPENSING;
-                const auto recipe = recipeBook->getRecipeAtIndex(position / COUNTS_PER_DRINK);
+                auto drinkIndex = position / COUNTS_PER_DRINK;
+                const auto recipe = recipeBook->getRecipeAtIndex(drinkIndex);
+                if (!recipe) {
+                    status = State::IDLE;
+                    Serial.printf("Can't find recipe %d\n", drinkIndex);
+                    return;
+                }
+                std::cout << "Dispensing " << recipe->name << "[" << drinkIndex << "] (encoder position " << position << ", waited " << waited.count() / 1'000'000 << "ms)\n";
 
-                std::cout << "Dispensing " << recipe.name << "[" << position / COUNTS_PER_DRINK << "] (encoder position " << position << ", waited " << waited.count() / 1'000'000 << "ms)\n";
-                if (!recipeBook->mixRecipe(recipe.name)) {
+                if (!recipeBook->mixRecipe(recipe->name)) {
                     std::cout << "Failed at dispensing... \n";
+                    status = State::IDLE;
                 }
                 delay(1000);
             }
