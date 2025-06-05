@@ -4,7 +4,8 @@
 // pour base: 1/8 oz
 
 
-#define DISPLAY_ADDRESS     0x27
+#define DISPLAY_ADDRESS     0x25
+#define VL53LOX_ADDR 0x29
 
 #define PUMP_CONTROL_0      0x10
 #define PUMP_CONTROL_1      0x11
@@ -17,7 +18,8 @@
 #define DRAIN               0xFF
 #define DISPENSE            0xDE
 
-
+#define DISPLAY_SPINNING            52
+#define DISPLAY_NO_CUP              53
 // Message format: COMMAND PUMP_IDX POUR_COUNT = 0xDE 0x01 0x08 // Pour 1oz from pump 1
 // example shot 3 way dirty pirate: spiced rum, coconut rum, pineapple, grenadine
 //      PUMP_CONTROL_0 -> 0xDE (DISPENSE) 0x3 (pump 4) 0x2 (two 1/8oz pours)

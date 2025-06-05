@@ -16,14 +16,14 @@ bool RecipeBook::mixRecipe(std::string_view drink) const {
         return false;
     }
 
-    // Can't pour less than 1/8oz so 8 ingredients max.
+    // Can't pour less than 1/8oz so 12 ingredients max.
     if (ingredients.size() > 8) {
         Serial.println("too many ingredients");
         return false;
     }
 
     // Calculate volumes - Short pours rather than overflow the cup.
-    const uint8_t pourCount = floor(8 / ingredients.size());
+    const uint8_t pourCount = floor(12 / ingredients.size());
 
     // Find ingredients!
     std::vector<std::pair<Controller, Pump>> pumps;
@@ -65,5 +65,10 @@ std::optional<Recipe> RecipeBook::getRecipeAtIndex(int index) const {
         Serial.println("Recipe index out of range");
         return {};
     }
+
+    i2cBus->beginTransmission(DISPLAY_ADDRESS);
+    i2cBus->write(index + 1);
+    i2cBus->endTransmission();
+
     return { recipes[index] };
 }

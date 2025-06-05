@@ -3,7 +3,7 @@
 #include <ESP32Encoder.h>
 
 enum class State {
-    IDLE,
+    READY,
     SPINNING,
     STOPPED,
     DISPENSING,
@@ -19,11 +19,11 @@ class WheelOfDestiny {
   }
 
   public:
-    WheelOfDestiny(int pinA, int pinB) : encoder(new ESP32Encoder(true, WheelOfDestiny::countChanged, static_cast<void*>(this))), state(State::IDLE) {
+    WheelOfDestiny(int pinA, int pinB) : encoder(new ESP32Encoder(true, WheelOfDestiny::countChanged, static_cast<void*>(this))), state(State::READY) {
       encoder->attachSingleEdge(pinA, pinB);
     }
     // Encoder set up externally
-    WheelOfDestiny(ESP32Encoder* encoder, int pinA, int pinB) : encoder(encoder), state{State::IDLE} {
+    WheelOfDestiny(ESP32Encoder* encoder, int pinA, int pinB) : encoder(encoder), state{State::READY} {
     };
 
     State getState() { return state; };

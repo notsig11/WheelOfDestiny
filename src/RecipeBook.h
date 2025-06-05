@@ -21,17 +21,36 @@ struct Recipe {
 
 class RecipeBook {
     const std::vector<Recipe> recipes {
-        { "Mini Long Island", { "vodka",  "tequila", "gin" } },
+            { "Peppermint Schnaupps", { "peppermint schnaupps" } },
+            { "Jagermeister", {"jagermeister" } },
+            { "Fireball", { "fireball" }},
+            { "Scurvy", { "scurvy" } },
+            { "Slushie", {"slushie"}},
+            { "Mystery Bag", {"mystery bag"}},
+            { "Blackberry Brandy", {"blackberry brandy" } },
+            { "Gin", {"gin" }},
+            {"Amaretto", {"amaretto"}},
+            { "Margarita", {"margarita mix"}},
+        { "Mini Long Island", { "vodka",  "tequila", "gin", "white rum", "margarita mix" } },
+            {"Blue Curacao", {"curacao" }},
+            { "Triple Sec", {"triple sec"}},
+            {"Vodka", {"vodka"}},
+            {"Cosby's Roofie Colada", {"pina colada pudding shot"}},
+            {"Apple Pucker", {"apple pucker"}},
         { "Gasoline",         { "tequila", "vodka", "gin", "peppermint schnaupps" } } ,
         { "Oil Spill",        { "curacao", "jager", "fireball", "cranberry" } },
         { "kamikaze",         { "vodka", "triple sec", "lime" } },
-        { "liquid cocaine",   { "jager", "151", "peppermint schnaupps" } },
+        { "liquid cocaine",   { "jager", "white rum", "peppermint schnaupps" } },
         { "Flamin Beaver",    { "fireball", "cider" } },
         { "Woo Woo",          { "vodka", "cranberry", "peach schnaupps" } },
         { "Polar Bear",       { "creme de cacao", "peppermint schnaupps" } },
-        { "Red-headed Slut",  { "jager", "peach schnuapps", "cranberry" } },
+        { "Red-headed Slut",  { "jager", "peach schnaupps", "cranberry" } },
         { "Washington Apple", { "crown", "apple pucker", "cranberry" } },
         { "lemon drop",       { "vodka", "melon", "simple syrup" } },
+            {"Buddy picks", {"a friend"}},
+            {"WE Pick", {"an enemy"}},
+            {"random", {"random"}},
+            {"You Pick", {"self"}},
         { "3 Way With A Dirty Pirate", { "spiced rum", "coconut rum", "white rum" } }
     };
 
@@ -61,9 +80,9 @@ class RecipeBook {
                                 { "lime", {PUMP_CONTROL_4, 3} },
 
                                 { "curacao", {PUMP_CONTROL_5, 0} },
-                                { "vodka", {PUMP_CONTROL_5, 1} },
-                                { "vodka", {PUMP_CONTROL_5, 2} },
-                                { "vodka", {PUMP_CONTROL_5, 3} },
+                                { "margarita mix", {PUMP_CONTROL_5, 1} },
+                                { "amaretto", {PUMP_CONTROL_5, 2} },
+                                { "blackberry brandy", {PUMP_CONTROL_5, 3} },
     };
 
     TwoWire* i2cBus;
