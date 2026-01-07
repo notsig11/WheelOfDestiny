@@ -24,6 +24,21 @@ enum class State {
     STOPPED,
     DISPENSING,
 };
+constexpr std::initializer_list<std::pair<State, const char*>> stateMap = {
+    {State::NO_CUP, "no cup"},  {State::READY, "ready"},   {State::ARMED, "armed"},
+    {State::SPINNING, "wheel spinning"}, {State::STOPPED, "wheel stopped"}, {State::DISPENSING, "dispensing"}
+};
+
+std::ostream& operator<<(std::ostream& os, State s) {
+    for (auto& state : stateMap) {
+        if (s == state.first) {
+            os << state.second;
+            return os;
+        }
+    }
+    os << "unknown state";
+    return os;
+}
 
 TwoWire i2c {0};
 RecipeBook *recipeBook;
@@ -128,6 +143,71 @@ void loop() {
     // }
 
     // Real work... Check the counter is moving and change states based on that.
+    // switch (status) {
+    //     case State::NO_CUP:
+    //         // TBD
+    //         break;
+    //     case State::READY:
+    //         if (resetTriggered) {
+    //             resetTriggered = false;
+    //             status = State::ARMED;
+    //             Serial.printf("Reset count %d\n", position);
+    //             wheel.setCount(0);
+    //         }
+    //         break;
+    //     case State::ARMED:
+    //         if (lastValue != position) {
+    //             status = State::SPINNING;
+    //             i2c.beginTransmission(DISPLAY_ADDRESS);
+    //             i2c.write(DISPLAY_SPINNING);
+    //             i2c.endTransmission();
+    //         }
+    //         break;
+    //     case State::SPINNING:
+    //         if (lastValue == position) {
+    //             stoppedAtTime = std::chrono::steady_clock::now();
+    //             status = State::STOPPED;
+    //             Serial.printf("Count %d (%d) (settling for 5s)\n", position, lastValue);
+    //         }
+    //         break;
+    //     case State::STOPPED: {}
+    //         if (lastValue != position) {
+    //             status = State::SPINNING;
+    //             return;
+    //         }
+    //
+    //         if (spinCompleteWait < std::chrono::steady_clock::now() - stoppedAtTime) {
+    //             status = State::DISPENSING;
+    //             // dispense()
+    //             auto drinkIndex = position / COUNTS_PER_DRINK;
+    //             const auto recipe = recipeBook->getRecipeAtIndex(drinkIndex);
+    //             if (!recipe) {
+    //                 status = State::READY;
+    //                 Serial.printf("Can't find recipe %d\n", drinkIndex);
+    //                 return;
+    //             }
+    //             if (!recipeBook->mixRecipe(recipe->name)) {
+    //                 std::cout << "Failed dispensing " << recipe->name << "\n";
+    //                 status = State::READY;
+    //             } else {
+    //                 std::cout << "Dispensing " << recipe->name << "[" << drinkIndex << "]" << "\n";
+    //             }
+    //         }
+    //         break;
+    //     case State::DISPENSING: {
+    //         const auto waited = std::chrono::steady_clock::now() - stoppedAtTime;
+    //         if (waited > dispensingWait) {
+    //             std::cout << "Dispensing for encoder position " << position
+    //                       << ", wait complete in " << waited.count() / 1'000'000 << "ms)\n";
+    //             status = State::READY;
+    //             std::cout << "Back to READY state.\n";
+    //         }
+    //         break;
+    //     }
+    //     default:
+    //         std::cout << "Unknown state " << status << "\n";
+    // }
+
     if (lastValue != position) {
         Serial.printf("State: %d Pos changed... %d - %d\n", status, lastValue, position);
         lastValue = position;
