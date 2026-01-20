@@ -2,11 +2,11 @@
 #include <ESP32Encoder.h>
 #include <chrono>
 #include <cstdio>
-#include <vector>
 #include <iostream>
 #include <Wire.h>
 
 #include "utils.h"
+#include "state.h"
 #include "config.h"
 #include "i2c_proto.h"
 #include "RecipeBook.h"
@@ -16,41 +16,14 @@
 using namespace std::chrono_literals;
 extern int _write(int fd, char *ptr, size_t len);
 
-enum class State {
-    NO_CUP,
-    READY,
-    ARMED,
-    SPINNING,
-    STOPPED,
-    DISPENSING,
-};
-constexpr std::initializer_list<std::pair<State, const char*>> stateMap = {
-    {State::NO_CUP, "no cup"},  {State::READY, "ready"},   {State::ARMED, "armed"},
-    {State::SPINNING, "wheel spinning"}, {State::STOPPED, "wheel stopped"}, {State::DISPENSING, "dispensing"}
-};
-
-std::ostream& operator<<(std::ostream& os, State s) {
-    for (auto& state : stateMap) {
-        if (s == state.first) {
-            os << state.second;
-            return os;
-        }
-    }
-    os << "unknown state";
-    return os;
-}
-
-TwoWire i2c {0};
-RecipeBook *recipeBook;
-
-// State vars
+// Global state vars
 volatile int32_t lastValue {0};
 volatile bool resetTriggered {false};
 volatile State status {State::READY};
 std::chrono::time_point<std::chrono::steady_clock> stoppedAtTime;
-bool displayUpdated {false};
+std::chrono::time_point<std::chrono::steady_clock> dispensingStartTime;
 
-// ISRs
+// Encoder changed interrupt.  Puts us in "SPINNING" if we are armed by a cup.
 static IRAM_ATTR void countChanged(void* arg) {
     ESP32Encoder* encoder = static_cast<ESP32Encoder*>(arg);
     if (status == State::ARMED)
@@ -63,10 +36,11 @@ static IRAM_ATTR void resetEnc() {
     resetTriggered = true;
 }
 
-//Adafruit_VL53L0X lox = Adafruit_VL53L0X();
-//TFT_eSPI display = TFT_eSPI();         // Declare object "tft"
+// Device globals
+TwoWire i2c {0};
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 ESP32Encoder wheel { true, countChanged};
-
+RecipeBook *recipeBook;
 
 void setup() {
     Serial.begin(115200);
@@ -75,15 +49,19 @@ void setup() {
     i2c.begin(SDA, SCL, 400'000);
     recipeBook = new RecipeBook(&i2c);
 
-//    if (!lox.begin(VL53LOX_ADDR, true, &i2c)) {
-//        Serial.println(F("Failed to boot VL53L0X"));
-//    }
-//    lox.startRangeContinuous();
-//
+    // Cup sensor initialization.
+    if (!lox.begin(VL53LOX_ADDR, true, &i2c)) {
+        Serial.println(F("Failed to boot VL53L0X"));
+    }
+    lox.startRangeContinuous();
+
+    // TODO: Move the display here?
+
     // Wheel setup
     ESP32Encoder::useInternalWeakPullResistors = puType::up;
     wheel.attachSingleEdge(OUT_A, OUT_B);
-    wheel.setFilter(1020);
+    wheel.setFilter(1020); // PCNT Filter threshold
+
     // Reset switch/wheel homing.
     pinMode(RESET, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(RESET), resetEnc, RISING);
@@ -97,6 +75,35 @@ void setup() {
     std::cout << "Initialization Complete... Find out your destiny.\n";
 }
 
+// Send commands to display handler.
+void display_update(uint8_t message) {
+    i2c.beginTransmission(DISPLAY_ADDRESS);
+    i2c.write(message);
+    i2c.endTransmission();
+}
+
+bool check_cup() {
+    // Check for cup.
+    if (lox.isRangeComplete()) {
+        Serial.print("Distance in mm: ");
+        const auto range = lox.readRange();
+        // Distance to detect glass < 100 == glass in
+        if (range > 100) {
+            if (status == State::NO_CUP)
+                return false;
+
+            status = State::NO_CUP;
+            i2c.beginTransmission(DISPLAY_ADDRESS);
+            i2c.write(DISPLAY_NO_CUP);
+            i2c.endTransmission();
+            return false;
+        } else {
+            status = State::READY;
+            return true;
+        }
+    }
+    return false;
+}
 
 /*
  * States:
@@ -106,6 +113,8 @@ void setup() {
 //uint64_t sum {};
 void loop() {
     const volatile int32_t position = abs(static_cast<int32_t>(wheel.getCount()));
+    if (!check_cup())
+        return;
 
 //    Serial.printf("Current counts: %d.  Drink %d\n", position, position / COUNTS_PER_DRINK);
 
@@ -121,26 +130,6 @@ void loop() {
         wheel.setCount(0);
         return;
     }
-
-    // Check for cup.
-//    if (lox.isRangeComplete()) {
-//        Serial.print("Distance in mm: ");
-//        const auto range = lox.readRange();
-//        // Distance to detect glass < 100 == glass in
-//        if (range > 100 && !displayUpdated) {
-//            i2c.beginTransmission(DISPLAY_ADDRESS);
-//            i2c.write(DISPLAY_NO_CUP);
-//            i2c.endTransmission();
-//            displayUpdated = true;
-//        }
-//    }
-
-    // Scrapped for ISR reset...
-    // if (resetTriggered) {
-    //     Serial.printf("Reset triggered at count %d\n", position);
-    //     resetTriggered = false;
-    //     wheel.setCount(0);
-    // }
 
     // Real work... Check the counter is moving and change states based on that.
     // switch (status) {
@@ -212,58 +201,57 @@ void loop() {
         Serial.printf("State: %d Pos changed... %d - %d\n", status, lastValue, position);
         lastValue = position;
 
-        if (status == State::DISPENSING)
-            return;
-
         if (status == State::ARMED) {
             Serial.printf("Transition from %d to %d\n", status, State::SPINNING);
             status = State::SPINNING;
-            i2c.beginTransmission(DISPLAY_ADDRESS);
-            i2c.write(DISPLAY_SPINNING);
-            i2c.endTransmission();
+            display_update(DISPLAY_SPINNING);
             return;
         }
-    } else { // Stopped...
+    } else {
+        // Stopped...
         if (status == State::READY) return;
 
         if (status == State::SPINNING) {
             Serial.printf("Stopped! Count %d (%d) (settling for 5s)\n", position, lastValue);
             stoppedAtTime = std::chrono::steady_clock::now();
             status = State::STOPPED;
-        } else if (status == State::STOPPED) {
-            if (spinCompleteWait < std::chrono::steady_clock::now() - stoppedAtTime) {
-                const auto waited = std::chrono::steady_clock::now() - stoppedAtTime;
+            display_update(DISPLAY_WAITING);
+        }
 
-                if (status == State::DISPENSING && waited > dispensingWait) {
-                    // Debugging TODO: REMOVEME when we get feedback that dispensing is complete...  Don't forget the time check.
-                    status = State::READY;
-                    Serial.println("Back to READY");
-                    return;
-                }
-
-                if (status != State::DISPENSING) {
+        if (status == State::STOPPED) {
+            if (const auto waited = std::chrono::steady_clock::now() - stoppedAtTime; spinCompleteWait < waited) {
                 // TODO: Refactor to simplify this...
-                    status = State::DISPENSING;
-                    auto drinkIndex = position / COUNTS_PER_DRINK;
-                    const auto recipe = recipeBook->getRecipeAtIndex(drinkIndex);
-                    if (!recipe) {
-                        status = State::READY;
-                        Serial.printf("Can't find recipe %d\n", drinkIndex);
-                        return;
-                    }
+                status = State::DISPENSING;
 
-                    std::cout << "Dispensing " << recipe->name << "[" << drinkIndex << "] (encoder position " << position
-                              << ", waited " << waited.count() / 1'000'000 << "ms)\n";
-
-                    //                status = State::READY;
-                    if (!recipeBook->mixRecipe(recipe->name)) {
-                        std::cout << "Failed at dispensing... \n";
-                        status = State::READY;
-                    }
+                auto drinkIndex = position / COUNTS_PER_DRINK;
+                const auto recipe = recipeBook->getRecipeAtIndex(drinkIndex);
+                if (!recipe) {
+                    status = State::READY;
+                    Serial.printf("Can't find recipe %d\n", drinkIndex);
+                    display_update(DISPLAY_LOST_RECIPE);
                     return;
                 }
-                Serial.println("This should be unreachable.  State must have changed on us unexpectedly.");
+
+                std::cout << "Dispensing " << recipe->name << "[" << drinkIndex << "] (encoder position " << position
+                          << ", waited " << waited.count() / 1'000'000 << "ms)\n";
+
+                dispensingStartTime = std::chrono::steady_clock::now();
+                if (!recipeBook->mixRecipe(recipe->name)) {
+                    std::cout << "Failed at dispensing... \n";
+                    status = State::READY;
+                }
+                return;
             }
+        }
+    }
+
+    if (status == State::DISPENSING) {
+        if (const auto waited = std::chrono::steady_clock::now() - dispensingStartTime; dispensingWait < waited) {
+            // Debugging TODO: REMOVEME when we get feedback that dispensing is complete...  Don't forget the time check.
+            status = State::READY;
+            std::cout << "Waited for dispensing to complete for " << waited.count() / 1'000'000 << " ms.  Back to READY!\n";
+            display_update(DISPLAY_READY);
+            return;
         }
     }
     delay(100);

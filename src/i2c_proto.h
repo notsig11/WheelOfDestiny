@@ -18,8 +18,11 @@
 #define DRAIN               0xFF
 #define DISPENSE            0xDE
 
-#define DISPLAY_SPINNING            52
-#define DISPLAY_NO_CUP              53
+#define DISPLAY_READY       50
+#define DISPLAY_WAITING     51
+#define DISPLAY_SPINNING    52
+#define DISPLAY_NO_CUP      53
+#define DISPLAY_LOST_RECIPE 54
 // Message format: COMMAND PUMP_IDX POUR_COUNT = 0xDE 0x01 0x08 // Pour 1oz from pump 1
 // example shot 3 way dirty pirate: spiced rum, coconut rum, pineapple, grenadine
 //      PUMP_CONTROL_0 -> 0xDE (DISPENSE) 0x3 (pump 4) 0x2 (two 1/8oz pours)
